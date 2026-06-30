@@ -21,17 +21,14 @@ function Intersection({ activePhase, data }) {
       <div style={{ position: "absolute", left: "50%", top: 0, transform: "translateX(-50%)", width: 60, height: "100%", background: "#2a2a2a", borderLeft: "2px solid #444", borderRight: "2px solid #444" }} />
       <div style={{ position: "absolute", top: "50%", left: 0, transform: "translateY(-50%)", width: "100%", height: 60, background: "#2a2a2a", borderTop: "2px solid #444", borderBottom: "2px solid #444" }} />
       <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)", width: 60, height: 60, background: "#333" }} />
-      {/* Traffic lights */}
       <div style={{ position: "absolute", top: 8, left: "50%", transform: "translate(-80px,0)" }}><TrafficLight isGreen={isNS} /></div>
       <div style={{ position: "absolute", bottom: 8, left: "50%", transform: "translate(20px,0)" }}><TrafficLight isGreen={isNS} /></div>
       <div style={{ position: "absolute", left: 8, top: "50%", transform: "translate(0,-80px)" }}><TrafficLight isGreen={!isNS} /></div>
       <div style={{ position: "absolute", right: 8, top: "50%", transform: "translate(0,20px)" }}><TrafficLight isGreen={!isNS} /></div>
-      {/* Labels */}
       <div style={{ position: "absolute", top: 2, left: "50%", transform: "translateX(-50%)", color: COLORS.north, fontSize: 11, fontWeight: "bold" }}>N ({data?.north || 0}🚗)</div>
       <div style={{ position: "absolute", bottom: 2, left: "50%", transform: "translateX(-50%)", color: COLORS.south, fontSize: 11, fontWeight: "bold" }}>S ({data?.south || 0}🚗)</div>
       <div style={{ position: "absolute", left: 2, top: "50%", transform: "translateY(-50%)", color: COLORS.west, fontSize: 11, fontWeight: "bold" }}>W ({data?.west || 0}🚗)</div>
       <div style={{ position: "absolute", right: 2, top: "50%", transform: "translateY(-50%)", color: COLORS.east, fontSize: 11, fontWeight: "bold" }}>E ({data?.east || 0}🚗)</div>
-      {/* Animated cars */}
       {isNS && <div style={{ position: "absolute", left: "50%", top: 70, transform: "translateX(-50%)", fontSize: 16, animation: "moveDown 2s linear infinite" }}>🚗</div>}
       {!isNS && <div style={{ position: "absolute", top: "50%", left: 70, transform: "translateY(-50%)", fontSize: 16, animation: "moveRight 2s linear infinite" }}>🚗</div>}
     </div>
@@ -64,7 +61,6 @@ export default function App() {
       setAiWaitTotal(prev => prev + d.waiting_time);
       setFixedWaitTotal(prev => prev + (d.north + d.south + d.east + d.west) * 0.8);
       setRounds(prev => prev + 1);
-      // Dynamic green time
       const maxCount = Math.max(d.north, d.south, d.east, d.west);
       setGreenTime(Math.round(10 + maxCount * 0.5));
     };
@@ -190,11 +186,16 @@ export default function App() {
             {loading ? "Analyzing..." : "🤖 Ask AI to Decide Signal"}
           </button>
           {manualResult && !manualResult.error && (
-            <div style={{ ...styles.phaseBox, marginTop: 20 }}>
-              <h2>🟢 AI Decision: <strong>{manualResult.active_phase}</strong></h2>
-              <p>⏱ Dynamic Green Time: <strong>{Math.round(10 + Math.max(manualInput.north, manualInput.south, manualInput.east, manualInput.west) * 0.5)}s</strong></p>
-              <p>🚦 Predicted Wait: <strong>{manualResult.waiting_time}s</strong></p>
-              <p style={{ color: "#aaa", fontSize: 13 }}>AI chose the direction with highest congestion to clear first</p>
+            <div style={{ ...styles.phaseBox, marginTop: 20, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20, maxWidth: 600 }}>
+              <div style={{ textAlign: "left" }}>
+                <h2 style={{ margin: 0 }}>🟢 AI Decision: <strong>{manualResult.active_phase}</strong></h2>
+                <p>⏱ Dynamic Green Time: <strong>{Math.round(10 + Math.max(manualInput.north, manualInput.south, manualInput.east, manualInput.west) * 0.5)}s</strong></p>
+                <p>🚦 Predicted Wait: <strong>{manualResult.waiting_time}s</strong></p>
+                <p style={{ color: "#aaa", fontSize: 13 }}>AI chose the direction with highest congestion to clear first</p>
+              </div>
+              <div style={{ fontSize: 60, color: "#4CAF50" }}>
+                {manualResult.active_phase === "North-South" ? "⬆️⬇️" : "⬅️➡️"}
+              </div>
             </div>
           )}
           {manualResult?.error && <p style={{ color: "#F44336" }}>{manualResult.error}</p>}
