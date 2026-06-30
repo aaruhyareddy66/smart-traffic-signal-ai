@@ -63,7 +63,12 @@ def get_status():
 @app.post("/predict")
 def predict(data: TrafficInput):
     counts = [data.north, data.south, data.east, data.west]
-    action = get_signal_decision(counts)
+    ns_total = data.north + data.south
+    ew_total = data.east + data.west
+
+    # Rule-based decision based on actual congestion (reliable for manual input)
+    action = 0 if ns_total >= ew_total else 1
+
     return {
         "north": data.north,
         "south": data.south,
@@ -85,7 +90,9 @@ async def upload_video(file: UploadFile = File(...)):
         count = count_from_video(temp_path)
         os.remove(temp_path)
         counts = [count, max(0, count-5), max(0, count-10), max(0, count-3)]
-        action = get_signal_decision(counts)
+        ns_total = counts[0] + counts[1]
+        ew_total = counts[2] + counts[3]
+        action = 0 if ns_total >= ew_total else 1
         max_count = max(counts)
         green_time = round(10 + max_count * 0.5)
         return {
