@@ -53,7 +53,7 @@ export default function App() {
   const fileRef = useRef();
 
   useEffect(() => {
-    const ws = new WebSocket("ws://localhost:8000/ws");
+    const ws = new WebSocket("wss://smart-traffic-signal-ai.onrender.com/ws");
     ws.onmessage = (event) => {
       const d = JSON.parse(event.data);
       setLiveData(d);
@@ -75,7 +75,7 @@ export default function App() {
   const handleManualSubmit = async () => {
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:8000/predict", {
+      const res = await fetch("https://smart-traffic-signal-ai.onrender.com/predict", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(manualInput)
@@ -95,7 +95,7 @@ export default function App() {
     const formData = new FormData();
     formData.append("file", file);
     try {
-      const res = await fetch("http://localhost:8000/upload_video", {
+      const res = await fetch("https://smart-traffic-signal-ai.onrender.com/upload_video", {
         method: "POST",
         body: formData
       });
