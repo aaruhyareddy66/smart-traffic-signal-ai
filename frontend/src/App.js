@@ -50,10 +50,17 @@ export default function App() {
   const [greenTime, setGreenTime] = useState(30);
   const [videoResult, setVideoResult] = useState(null);
   const [videoLoading, setVideoLoading] = useState(false);
+  const [wsStatus, setWsStatus] = useState("Connecting...");
   const fileRef = useRef();
+  const wsRef = useRef(null);
 
-  useEffect(() => {
+  const connectWebSocket = () => {
     const ws = new WebSocket("wss://smart-traffic-signal-ai.onrender.com/ws");
+
+    ws.onopen = () => {
+      setWsStatus("Connected ✅");
+    };
+
     ws.onmessage = (event) => {
       const d = JSON.parse(event.data);
       setLiveData(d);
@@ -64,7 +71,28 @@ export default function App() {
       const maxCount = Math.max(d.north, d.south, d.east, d.west);
       setGreenTime(Math.round(10 + maxCount * 0.5));
     };
-    return () => ws.close();
+
+    ws.onclose = () => {
+      setWsStatus("Reconnecting...");
+      setLiveData(null);
+      setTimeout(() => {
+        wsRef.current = connectWebSocket();
+      }, 3000);
+    };
+
+    ws.onerror = () => {
+      setWsStatus("Connection error — retrying...");
+      ws.close();
+    };
+
+    return ws;
+  };
+
+  useEffect(() => {
+    wsRef.current = connectWebSocket();
+    return () => {
+      if (wsRef.current) wsRef.current.close();
+    };
   }, []);
 
   const handleEmergency = (direction) => {
@@ -83,7 +111,7 @@ export default function App() {
       const data = await res.json();
       setManualResult(data);
     } catch (e) {
-      setManualResult({ error: "Backend not connected!" });
+      setManualResult({ error: "Backend is waking up — please wait 30 seconds and try again!" });
     }
     setLoading(false);
   };
@@ -102,7 +130,7 @@ export default function App() {
       const data = await res.json();
       setVideoResult(data);
     } catch (err) {
-      setVideoResult({ error: "Upload failed or backend not running!" });
+      setVideoResult({ error: "Backend is waking up — please wait 30 seconds and try again!" });
     }
     setVideoLoading(false);
   };
@@ -121,9 +149,12 @@ export default function App() {
       case 0: return (
         <div>
           <h2 style={{ ...styles.sectionTitle, color: "#4CAF50" }}>📡 Live AI Monitor</h2>
+          <p style={{ color: wsStatus.includes("✅") ? "#4CAF50" : "#FF9800", fontSize: 13, margin: "0 0 12px" }}>
+            WebSocket: {wsStatus}
+          </p>
           {emergency && (
             <div style={{ background: "#F44336", borderRadius: 8, padding: "12px 20px", marginBottom: 16, textAlign: "center", animation: "pulse 1s infinite" }}>
-              🚨 <strong>EMERGENCY OVERRIDE!</strong> {emergency} lane cleared for emergency vehicle!
+              🚨 <strong>EMERGENCY OVERRIDE!</strong> {emergency} lane cleared!
             </div>
           )}
           {liveData ? (<>
@@ -153,13 +184,18 @@ export default function App() {
                 ))}
               </div>
             </div>
-          </>) : <p style={{ color: "#aaa" }}>Connecting to backend...</p>}
+          </>) : (
+            <div style={{ textAlign: "center", padding: 40 }}>
+              <p style={{ color: "#FF9800", fontSize: 16 }}>⏳ {wsStatus}</p>
+              <p style={{ color: "#aaa", fontSize: 13 }}>Backend may be waking up — usually takes 30-50 seconds on first load</p>
+            </div>
+          )}
         </div>
       );
       case 1: return (
         <div>
           <h2 style={{ ...styles.sectionTitle, color: "#4CAF50" }}>🗺️ Live Intersection View</h2>
-          <Intersection activePhase={emergency ? `${emergency}-Emergency` : liveData?.active_phase} data={liveData} />
+          <Intersection activePhase={liveData?.active_phase} data={liveData} />
           <p style={{ textAlign: "center", color: "#aaa", marginTop: 16 }}>
             Signal: <strong style={{ color: "#4CAF50" }}>{liveData?.active_phase || "Loading..."}</strong>
             {" | "} Green for: <strong style={{ color: "#FFD700" }}>{greenTime}s</strong>
@@ -191,14 +227,18 @@ export default function App() {
                 <h2 style={{ margin: 0 }}>🟢 AI Decision: <strong>{manualResult.active_phase}</strong></h2>
                 <p>⏱ Dynamic Green Time: <strong>{Math.round(10 + Math.max(manualInput.north, manualInput.south, manualInput.east, manualInput.west) * 0.5)}s</strong></p>
                 <p>🚦 Predicted Wait: <strong>{manualResult.waiting_time}s</strong></p>
-                <p style={{ color: "#aaa", fontSize: 13 }}>AI chose the direction with highest congestion to clear first</p>
+                <p style={{ color: "#aaa", fontSize: 13 }}>AI chose direction with highest congestion to clear first</p>
               </div>
-              <div style={{ fontSize: 60, color: "#4CAF50" }}>
+              <div style={{ fontSize: 60 }}>
                 {manualResult.active_phase === "North-South" ? "⬆️⬇️" : "⬅️➡️"}
               </div>
             </div>
           )}
-          {manualResult?.error && <p style={{ color: "#F44336" }}>{manualResult.error}</p>}
+          {manualResult?.error && (
+            <div style={{ background: "#2a1a1a", border: "1px solid #F44336", borderRadius: 8, padding: 16, marginTop: 16 }}>
+              <p style={{ color: "#F44336", margin: 0 }}>⚠️ {manualResult.error}</p>
+            </div>
+          )}
         </div>
       );
       case 3: return (
@@ -277,7 +317,12 @@ export default function App() {
             <p style={{ color: "#aaa", fontSize: 13 }}>Supports MP4, AVI, MOV</p>
             <input ref={fileRef} type="file" accept="video/*" style={{ display: "none" }} onChange={handleVideoUpload} />
           </div>
-          {videoLoading && <p style={{ color: "#4CAF50", textAlign: "center", marginTop: 16 }}>🔍 YOLOv8 analyzing video...</p>}
+          {videoLoading && (
+            <div style={{ textAlign: "center", marginTop: 16 }}>
+              <p style={{ color: "#4CAF50" }}>🔍 YOLOv8 analyzing video...</p>
+              <p style={{ color: "#aaa", fontSize: 13 }}>This may take 30-60 seconds</p>
+            </div>
+          )}
           {videoResult && !videoResult.error && (
             <div style={{ ...styles.phaseBox, marginTop: 20 }}>
               <h2>✅ YOLOv8 Detection Complete!</h2>
@@ -294,7 +339,11 @@ export default function App() {
               <p>⏱ Dynamic Green Time: <strong>{videoResult.green_time}s</strong></p>
             </div>
           )}
-          {videoResult?.error && <p style={{ color: "#F44336", marginTop: 16 }}>{videoResult.error}</p>}
+          {videoResult?.error && (
+            <div style={{ background: "#2a1a1a", border: "1px solid #F44336", borderRadius: 8, padding: 16, marginTop: 16 }}>
+              <p style={{ color: "#F44336", margin: 0 }}>⚠️ {videoResult.error}</p>
+            </div>
+          )}
         </div>
       );
       default: return null;
@@ -328,6 +377,7 @@ export default function App() {
           ))}
           <div style={{ ...styles.miniStatus, background: darkMode ? "#111" : "#eee", border: `1px solid ${darkMode ? "#222" : "#ddd"}` }}>
             <p style={{ color: "#aaa", fontSize: 12, margin: "0 0 6px" }}>Live Status</p>
+            <p style={{ color: wsStatus.includes("✅") ? "#4CAF50" : "#FF9800", fontSize: 12, margin: "4px 0" }}>{wsStatus}</p>
             <p style={{ color: "#4CAF50", fontSize: 13, margin: "4px 0" }}>🟢 {liveData?.active_phase || "Loading..."}</p>
             <p style={{ color: "#aaa", fontSize: 12, margin: "4px 0" }}>Wait: {liveData?.waiting_time || 0}s</p>
             <p style={{ color: "#aaa", fontSize: 12, margin: "4px 0" }}>Green: {greenTime}s</p>
