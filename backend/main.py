@@ -10,7 +10,13 @@ import shutil
 import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from stable_baselines3 import DQN
+
+try:
+    from stable_baselines3 import DQN
+    model_available = True
+except:
+    model_available = False
+    DQN = None
 
 app = FastAPI()
 
@@ -21,20 +27,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-try:
-    model = DQN.load(os.path.join(os.path.dirname(__file__), "..", "rl_agent", "models", "traffic_dqn"))
-    model_loaded = True
-    print("✅ Model loaded successfully!")
-except:
-    model_loaded = False
-    print("⚠️ Model not found, using random actions")
+# Lazy load model only when needed
+_model = None
+model_loaded = False
+
+def get_model():
+    global _model, model_loaded
+    if _model is None and model_available:
+        try:
+            _model = DQN.load(os.path.join(os.path.dirname(__file__), "..", "rl_agent", "models", "traffic_dqn"))
+            model_loaded = True
+            print("✅ Model loaded successfully!")
+        except:
+            model_loaded = False
+            print("⚠️ Model not found, using rule-based decisions")
+    return _model
 
 def get_signal_decision(vehicle_counts):
-    if model_loaded:
+    model = get_model()
+    if model is not None:
         obs = np.array(vehicle_counts + [0], dtype=np.float32)
         action, _ = model.predict(obs)
         return int(action)
-    return random.randint(0, 1)
+    ns_total = vehicle_counts[0] + vehicle_counts[1]
+    ew_total = vehicle_counts[2] + vehicle_counts[3]
+    return 0 if ns_total >= ew_total else 1
 
 class TrafficInput(BaseModel):
     north: int
@@ -45,6 +62,10 @@ class TrafficInput(BaseModel):
 @app.get("/")
 def root():
     return {"message": "Smart Traffic API Running!"}
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
 @app.get("/status")
 def get_status():
@@ -65,10 +86,7 @@ def predict(data: TrafficInput):
     counts = [data.north, data.south, data.east, data.west]
     ns_total = data.north + data.south
     ew_total = data.east + data.west
-
-    # Rule-based decision based on actual congestion (reliable for manual input)
     action = 0 if ns_total >= ew_total else 1
-
     return {
         "north": data.north,
         "south": data.south,
@@ -81,14 +99,21 @@ def predict(data: TrafficInput):
 
 @app.post("/upload_video")
 async def upload_video(file: UploadFile = File(...)):
+    temp_path = f"temp_{file.filename}"
     try:
-        temp_path = f"temp_{file.filename}"
         with open(temp_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
+
+        import gc
         sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "yolo_module")))
         from detect import count_from_video
         count = count_from_video(temp_path)
-        os.remove(temp_path)
+
+        gc.collect()
+
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
         counts = [count, max(0, count-5), max(0, count-10), max(0, count-3)]
         ns_total = counts[0] + counts[1]
         ew_total = counts[2] + counts[3]
@@ -103,6 +128,8 @@ async def upload_video(file: UploadFile = File(...)):
             "total_vehicles": count
         }
     except Exception as e:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
         return {"error": str(e)}
 
 @app.websocket("/ws")
