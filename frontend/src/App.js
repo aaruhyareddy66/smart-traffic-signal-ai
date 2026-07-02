@@ -52,47 +52,28 @@ export default function App() {
   const [videoLoading, setVideoLoading] = useState(false);
   const [wsStatus, setWsStatus] = useState("Connecting...");
   const fileRef = useRef();
-  const wsRef = useRef(null);
-
-  const connectWebSocket = () => {
-    const ws = new WebSocket("wss://smart-traffic-signal-ai.onrender.com/ws");
-
-    ws.onopen = () => {
-      setWsStatus("Connected ✅");
-    };
-
-    ws.onmessage = (event) => {
-      const d = JSON.parse(event.data);
-      setLiveData(d);
-      setHistory(prev => [...prev.slice(-20), { ...d, time: new Date().toLocaleTimeString() }]);
-      setAiWaitTotal(prev => prev + d.waiting_time);
-      setFixedWaitTotal(prev => prev + (d.north + d.south + d.east + d.west) * 0.8);
-      setRounds(prev => prev + 1);
-      const maxCount = Math.max(d.north, d.south, d.east, d.west);
-      setGreenTime(Math.round(10 + maxCount * 0.5));
-    };
-
-    ws.onclose = () => {
-      setWsStatus("Reconnecting...");
-      setLiveData(null);
-      setTimeout(() => {
-        wsRef.current = connectWebSocket();
-      }, 3000);
-    };
-
-    ws.onerror = () => {
-      setWsStatus("Connection error — retrying...");
-      ws.close();
-    };
-
-    return ws;
-  };
 
   useEffect(() => {
-    wsRef.current = connectWebSocket();
-    return () => {
-      if (wsRef.current) wsRef.current.close();
+    const fetchData = async () => {
+      try {
+        const res = await fetch("https://smart-traffic-signal-ai.onrender.com/status");
+        const d = await res.json();
+        setLiveData(d);
+        setWsStatus("Connected ✅");
+        setHistory(prev => [...prev.slice(-20), { ...d, time: new Date().toLocaleTimeString() }]);
+        setAiWaitTotal(prev => prev + d.waiting_time);
+        setFixedWaitTotal(prev => prev + (d.north + d.south + d.east + d.west) * 0.8);
+        setRounds(prev => prev + 1);
+        const maxCount = Math.max(d.north, d.south, d.east, d.west);
+        setGreenTime(Math.round(10 + maxCount * 0.5));
+      } catch (e) {
+        setWsStatus("Reconnecting...");
+      }
     };
+
+    fetchData();
+    const interval = setInterval(fetchData, 2000);
+    return () => clearInterval(interval);
   }, []);
 
   const handleEmergency = (direction) => {
@@ -130,7 +111,7 @@ export default function App() {
       const data = await res.json();
       setVideoResult(data);
     } catch (err) {
-      setVideoResult({ error: "Backend is waking up — please wait 30 seconds and try again!" });
+      setVideoResult({ error: "Upload failed — please try again!" });
     }
     setVideoLoading(false);
   };
@@ -150,7 +131,7 @@ export default function App() {
         <div>
           <h2 style={{ ...styles.sectionTitle, color: "#4CAF50" }}>📡 Live AI Monitor</h2>
           <p style={{ color: wsStatus.includes("✅") ? "#4CAF50" : "#FF9800", fontSize: 13, margin: "0 0 12px" }}>
-            WebSocket: {wsStatus}
+            Status: {wsStatus}
           </p>
           {emergency && (
             <div style={{ background: "#F44336", borderRadius: 8, padding: "12px 20px", marginBottom: 16, textAlign: "center", animation: "pulse 1s infinite" }}>
@@ -309,7 +290,7 @@ export default function App() {
       case 5: return (
         <div>
           <h2 style={{ ...styles.sectionTitle, color: "#4CAF50" }}>📷 Upload Traffic Video</h2>
-          <p style={{ color: "#aaa" }}>Upload a traffic video → YOLOv8 counts vehicles → AI decides signal</p>
+          <p style={{ color: "#aaa" }}>Upload a traffic video → AI analyzes traffic density → decides signal</p>
           <div style={{ ...styles.card, background: cardBg, padding: 30, textAlign: "center", border: "2px dashed #4CAF50", cursor: "pointer" }}
             onClick={() => fileRef.current.click()}>
             <p style={{ fontSize: 40 }}>📁</p>
@@ -319,13 +300,13 @@ export default function App() {
           </div>
           {videoLoading && (
             <div style={{ textAlign: "center", marginTop: 16 }}>
-              <p style={{ color: "#4CAF50" }}>🔍 YOLOv8 analyzing video...</p>
-              <p style={{ color: "#aaa", fontSize: 13 }}>This may take 30-60 seconds</p>
+              <p style={{ color: "#4CAF50" }}>🔍 Analyzing video traffic density...</p>
+              <p style={{ color: "#aaa", fontSize: 13 }}>This may take a few seconds</p>
             </div>
           )}
           {videoResult && !videoResult.error && (
             <div style={{ ...styles.phaseBox, marginTop: 20 }}>
-              <h2>✅ YOLOv8 Detection Complete!</h2>
+              <h2>✅ Analysis Complete!</h2>
               <div style={styles.cardRow}>
                 {["north", "south", "east", "west"].map(dir => (
                   <div key={dir} style={{ textAlign: "center" }}>
@@ -337,6 +318,7 @@ export default function App() {
               </div>
               <h3>🟢 AI Signal Decision: <strong>{videoResult.active_phase}</strong></h3>
               <p>⏱ Dynamic Green Time: <strong>{videoResult.green_time}s</strong></p>
+              <p style={{ color: "#aaa", fontSize: 13 }}>Total vehicles detected: <strong style={{ color: "white" }}>{videoResult.total_vehicles}</strong></p>
             </div>
           )}
           {videoResult?.error && (
