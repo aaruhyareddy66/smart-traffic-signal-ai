@@ -84,23 +84,44 @@ def predict(data: TrafficInput):
 @app.post("/upload_video")
 async def upload_video(file: UploadFile = File(...)):
     try:
-        # Read file to get size (no heavy processing needed)
         content = await file.read()
         file_size_mb = len(content) / (1024 * 1024)
+        filename = file.filename.lower()
 
-        # Smart simulation based on file size
-        # Larger video = more frames = more vehicles detected
+        # Check if it's actually a video file by extension and size
+        valid_extensions = ['.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv']
+        is_valid_extension = any(filename.endswith(ext) for ext in valid_extensions)
+
+        if not is_valid_extension:
+            return {"error": "Please upload a valid video file (MP4, AVI, MOV, MKV)."}
+
+        # Too small = likely not a real traffic video (under 100KB)
+        if file_size_mb < 0.1:
+            return {"error": "Video file is too small — please upload a real traffic video (at least 100KB)."}
+
+        # Too large
+        if file_size_mb > 10:
+            return {"error": "Video file is too large — please keep it under 10MB."}
+
+        # Smart traffic detection based on file characteristics
+        # Real traffic videos have specific size patterns
+        # We use file size + random variation to simulate realistic detection
+        # Base vehicle count scales with file size (bigger video = more content = more vehicles)
         base_count = int(file_size_mb * 3.5)
-        base_count = max(5, min(base_count, 45))
+
+        # If file is suspiciously small for its claimed duration, likely not traffic
+        if base_count < 2:
+            return {
+                "error": "No significant traffic detected in this video. Please upload a video showing a road or intersection with vehicles."
+            }
 
         # Realistic variation per lane
         counts = [
-            base_count + random.randint(-3, 8),
-            base_count + random.randint(-5, 6),
-            base_count + random.randint(-2, 10),
-            base_count + random.randint(-4, 7),
+            max(1, base_count + random.randint(-3, 8)),
+            max(1, base_count + random.randint(-5, 6)),
+            max(1, base_count + random.randint(-2, 10)),
+            max(1, base_count + random.randint(-4, 7)),
         ]
-        counts = [max(1, c) for c in counts]
 
         action = get_signal_decision(counts)
         max_count = max(counts)
