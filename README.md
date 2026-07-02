@@ -1,86 +1,100 @@
 # 🚦 Smart Traffic Signal Control System
 
-An AI-powered traffic signal optimization system that replaces fixed-timer signals with a Reinforcement Learning agent. The system observes vehicle density on a 4-way intersection and dynamically decides which direction gets the green light, aiming to reduce average waiting time compared to traditional fixed-cycle signals.
+An AI-powered traffic signal optimization system that dynamically controls a 4-way intersection using Reinforcement Learning. Instead of fixed timers, the system observes real-time vehicle density per lane and decides which direction gets the green light — reducing average waiting time compared to traditional fixed-cycle signals.
 
 **🔗 Live Demo:** [smart-traffic-signal-ai.vercel.app](https://smart-traffic-signal-ai.vercel.app)
 **🔗 API:** [smart-traffic-signal-ai.onrender.com](https://smart-traffic-signal-ai.onrender.com)
-**🔗 API Docs (Swagger):** [smart-traffic-signal-ai.onrender.com/docs](https://smart-traffic-signal-ai.onrender.com/docs)
+**🔗 API Docs:** [smart-traffic-signal-ai.onrender.com/docs](https://smart-traffic-signal-ai.onrender.com/docs)
 
-> ⚠️ Backend is hosted on Render's free tier — it sleeps after 15 mins of inactivity, so the first request may take 30-50 seconds to wake up.
+> ⚠️ Backend hosted on Render free tier — first load may take 30-50 seconds to wake up. All subsequent requests are instant.
 
 ---
 
 ## 📌 Why this project
 
-Most traffic signals run on fixed timers — 30 seconds green regardless of whether 2 cars or 40 cars are waiting. This wastes time at empty intersections and adds to congestion at busy ones. This project explores whether an RL agent that watches real-time vehicle counts can make smarter, faster decisions than a fixed schedule.
+Traditional traffic signals run on fixed timers — 30 seconds green regardless of whether 2 cars or 40 cars are waiting. This wastes time at empty intersections and creates unnecessary congestion at busy ones. This project replaces fixed timers with a Reinforcement Learning agent that observes real-time vehicle counts and makes smarter, dynamic decisions — similar to what modern smart city systems do.
 
 ---
 
 ## 🧠 How it works
 
-1. A custom OpenAI Gym-style environment simulates traffic flow across 4 directions (North, South, East, West)
-2. A DQN agent (Stable-Baselines3) is trained to choose between North-South green or East-West green, learning to minimize total waiting time across ~20,000 timesteps
-3. YOLOv8 can process uploaded traffic video to count actual vehicles per lane
-4. FastAPI serves the trained model and streams live decisions over WebSocket
-5. A React dashboard visualizes everything in real time — live monitor, intersection view, manual testing, and AI vs fixed-timer comparison
-
----
-
-## 🛠️ Tech Stack
-
-**AI / ML**
-- Reinforcement Learning — Stable-Baselines3 (DQN)
-- Computer Vision — YOLOv8 (Ultralytics)
-- Custom Gymnasium environment
-
-**Backend**
-- FastAPI
-- WebSockets for real-time streaming
-- Python 3.13
-
-**Frontend**
-- React
-- Recharts for data visualization
-- WebSocket client for live updates
-
-**Deployment**
-- Backend → Render
-- Frontend → Vercel
-- Version control → GitHub
+1. A custom OpenAI Gym-style environment simulates a 4-way intersection with realistic traffic patterns including rush-hour cycles
+2. A DQN agent (Stable-Baselines3) is trained over 20,000 timesteps to minimize total waiting time across all lanes — reward improved from -314 to consistently positive values
+3. YOLOv8 (Ultralytics) was built and tested locally for actual vehicle detection from traffic video files and webcam feed
+4. Due to free hosting memory limits (512MB), the deployed backend uses a smart traffic density simulation instead of running YOLOv8 on the server — a deliberate engineering tradeoff to keep the system stable and responsive
+5. FastAPI serves real-time traffic decisions via HTTP polling every 2 seconds
+6. React dashboard shows live data, intersection animation, manual testing, performance comparison, and video upload analysis
 
 ---
 
 ## ✨ Features
 
-- **Live AI Monitor** — watch the AI make signal decisions on simulated traffic every 2 seconds
-- **Visual Intersection** — animated 4-way intersection showing which signal is currently green
-- **Manual Input Mode** — enter your own vehicle counts per lane and see what the AI decides, with a directional arrow indicator
-- **AI vs Fixed Timer Comparison** — live chart comparing average waiting time under AI control vs a traditional fixed-timer baseline
-- **Traffic History** — rolling chart of vehicle counts across all 4 directions over time
-- **Video Upload** — upload a traffic video and let YOLOv8 detect and count vehicles, feeding directly into the signal decision
-- **Emergency Override** — simulate an emergency vehicle on any lane and instantly override the signal
-- **Dynamic Green Time** — green light duration scales with vehicle count instead of staying fixed
-- **Dark / Light mode** toggle
+- **📡 Live AI Monitor** — real-time vehicle counts per lane with AI signal decisions updating every 2 seconds, including rush-hour simulation patterns
+- **🗺️ Intersection View** — animated 4-way intersection with working traffic lights and car animations switching based on AI decisions
+- **🎮 Manual Input** — enter your own vehicle counts per lane → AI instantly decides which signal turns green → directional arrow shows the result
+- **⚔️ AI vs Fixed Timer** — live bar chart comparing average waiting time under AI control vs traditional fixed-timer baseline, proving AI saves time
+- **📈 Traffic History** — rolling line chart of all 4 lane counts over time with congestion scoring (Low / Medium / High)
+- **📷 Video Upload** — upload a traffic video → system analyzes traffic density → AI decides optimal signal with dynamic green time
+- **🚨 Emergency Override** — simulate an emergency vehicle on any lane and instantly override the current signal
+- **⏱️ Dynamic Green Time** — green light duration scales automatically with vehicle count (formula: 10 + max_count × 0.5 seconds)
+- **🌙 Dark / Light mode** toggle
 
 ---
 
-## 📁 Project Structure
+## 🛠️ Tech Stack
+
+| Layer | Tech |
+|---|---|
+| Reinforcement Learning | Stable-Baselines3 (DQN), Custom Gymnasium environment |
+| Computer Vision | YOLOv8 (Ultralytics) — built and tested locally for vehicle detection |
+| Traffic Simulation | Python-based simulation with rush-hour patterns |
+| Backend | FastAPI, Python, Uvicorn |
+| Frontend | React, Recharts |
+| Deployment | Render (backend) + Vercel (frontend) |
+| Monitoring | UptimeRobot (keeps backend alive) |
+| Version Control | GitHub |
+
+---
+
+## 📊 RL Training Results
+
+Trained for 20,000 timesteps on a custom Gymnasium environment:
+
+| Metric | Start | End |
+|---|---|---|
+| Episode reward mean | -314 | +53 to +198 |
+| Exploration rate | 0.525 | 0.05 |
+| Training time | — | ~15 mins (CPU) |
+
+The agent learned to favor the direction with heavier traffic rather than alternating randomly — exactly the behavior we want from a smart signal system.
+
+---
+
+## 🖥️ Project Structure
 smart_traffic_ai/
-├── sumo_config/          # SUMO intersection network and route definitions
+├── sumo_config/
+│   ├── intersection.nod.xml   # SUMO node definitions
+│   ├── intersection.edg.xml   # SUMO edge definitions
+│   ├── intersection.net.xml   # Generated SUMO network
+│   ├── routes.xml             # Vehicle flow definitions
+│   └── simulation.sumocfg     # SUMO config file
 ├── rl_agent/
-│   ├── traffic_env.py    # Custom Gym environment
-│   ├── train.py          # DQN training script
-│   └── models/           # Saved trained model
+│   ├── traffic_env.py         # Custom Gymnasium environment
+│   ├── train.py               # DQN training script
+│   └── models/
+│       └── traffic_dqn.zip    # Saved trained model
 ├── yolo_module/
-│   └── detect.py         # YOLOv8 vehicle detection from video/webcam
+│   └── detect.py              # YOLOv8 vehicle detection (local use)
 ├── backend/
-│   └── main.py           # FastAPI server, WebSocket, /predict, /upload_video
+│   └── main.py                # FastAPI — /health /status /predict /upload_video
 ├── frontend/
-│   └── src/App.js        # React dashboard
+│   └── src/
+│       └── App.js             # React dashboard (6 tabs)
 └── requirements.txt
+
 ---
 
-## 🚀 Running it locally
+## 🚀 Running Locally
 
 **1. Clone the repo**
 ```bash
@@ -88,50 +102,64 @@ git clone https://github.com/aaruhyareddy66/smart-traffic-signal-ai.git
 cd smart-traffic-signal-ai
 ```
 
-**2. Set up the backend**
+**2. Set up Python environment**
 ```bash
 python -m venv venv
-venv\Scripts\activate          # Windows
-pip install -r requirements.txt
+venv\Scripts\activate
+pip install fastapi uvicorn python-multipart numpy pydantic
+pip install stable-baselines3 gymnasium
+pip install ultralytics opencv-python
 ```
 
-**3. Train the RL agent** (optional — a trained model is already included)
+**3. Train the RL agent** (optional — pre-trained model already included)
 ```bash
 cd rl_agent
 python train.py
 ```
 
-**4. Run the backend**
+**4. Test YOLOv8 locally** (optional)
 ```bash
-cd ../backend
+cd yolo_module
+python detect.py
+```
+
+**5. Run the backend**
+```bash
+cd backend
 uvicorn main:app --reload --port 8000
 ```
 
-**5. Run the frontend** (in a new terminal)
+**6. Run the frontend**
 ```bash
 cd frontend
 npm install
 npm start
 ```
 
-Visit `http://localhost:3000` — the dashboard should connect to the backend automatically.
+Open `http://localhost:3000` — dashboard connects to backend automatically.
 
 ---
 
-## 📊 Results
+## ⚙️ Engineering Decisions
 
-The DQN agent's reward improved from around **-314** at the start of training to consistently positive values (60-200 range) by 20,000 timesteps, indicating it learned to favor the direction with heavier traffic rather than switching randomly.
+**Why not run YOLOv8 on the server?**
+YOLOv8 requires ~1.5GB RAM to load. Render's free tier provides 512MB. Running it on the server caused consistent crashes and 8+ minute response times. The solution: YOLOv8 runs locally during development and testing; the deployed backend uses a smart simulation based on video file characteristics for stable, fast responses. This is a deliberate tradeoff between feature completeness and system reliability — a real engineering decision.
 
-In the AI vs Fixed Timer comparison view, the AI-controlled signal shows a measurable reduction in average waiting time compared to a flat fixed-timer baseline under the same simulated traffic load.
+**Why polling instead of WebSockets?**
+Render's free tier doesn't reliably maintain persistent WebSocket connections — they drop after 30-60 seconds with no warning. HTTP polling every 2 seconds gives identical user experience with far better reliability on free hosting.
+
+**Why Python simulation instead of SUMO?**
+SUMO was installed (portable zip) and configured, but TraCI connection consistently failed due to admin restrictions on the college laptop blocking the SUMO binary from binding to ports. The Python simulation replicates the same RL training environment with rush-hour patterns.
 
 ---
 
-## 🔭 Possible next steps
+## 🔭 What I'd do next
 
-- Replace the simplified Python traffic simulation with full SUMO-based physics for more realistic training
-- Train on real intersection camera footage instead of simulated counts
-- Extend to multiple connected intersections (corridor-level optimization)
-- Add PPO as an alternative agent and compare against DQN
+- Full SUMO integration for physics-accurate traffic simulation
+- Real-time webcam feed → YOLOv8 → live signal decisions in production
+- Multi-intersection corridor-level optimization
+- Compare DQN vs PPO agent performance
+- GPU deployment for real-time YOLOv8 inference
 
 ---
 
@@ -139,3 +167,4 @@ In the AI vs Fixed Timer comparison view, the AI-controlled signal shows a measu
 
 **Aaruhya Reddy**
 GitHub: [@aaruhyareddy66](https://github.com/aaruhyareddy66)
+Live Demo: [smart-traffic-signal-ai.vercel.app](https://smart-traffic-signal-ai.vercel.app)
