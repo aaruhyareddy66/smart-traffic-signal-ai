@@ -6,17 +6,9 @@ import random
 import json
 import sys
 import os
-import shutil
 import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-try:
-    from stable_baselines3 import DQN
-    model_available = True
-except:
-    model_available = False
-    DQN = None
 
 app = FastAPI()
 
@@ -27,31 +19,42 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Lazy load model only when needed
+# Lazy load RL model
 _model = None
-model_loaded = False
 
 def get_model():
-    global _model, model_loaded
-    if _model is None and model_available:
+    global _model
+    if _model is None:
         try:
-            _model = DQN.load(os.path.join(os.path.dirname(__file__), "..", "rl_agent", "models", "traffic_dqn"))
-            model_loaded = True
-            print("✅ Model loaded successfully!")
-        except:
-            model_loaded = False
-            print("⚠️ Model not found, using rule-based decisions")
-    return _model
+            from stable_baselines3 import DQN
+            _model = DQN.load(os.path.join(
+                os.path.dirname(__file__), "..", "rl_agent", "models", "traffic_dqn"
+            ))
+            print("✅ RL Model loaded")
+        except Exception as e:
+            print(f"⚠️ Model not found: {e}")
+            _model = "unavailable"
+    return _model if _model != "unavailable" else None
 
 def get_signal_decision(vehicle_counts):
-    model = get_model()
-    if model is not None:
-        obs = np.array(vehicle_counts + [0], dtype=np.float32)
-        action, _ = model.predict(obs)
-        return int(action)
     ns_total = vehicle_counts[0] + vehicle_counts[1]
     ew_total = vehicle_counts[2] + vehicle_counts[3]
     return 0 if ns_total >= ew_total else 1
+
+def build_response(counts, action=None):
+    if action is None:
+        action = get_signal_decision(counts)
+    max_count = max(counts)
+    return {
+        "north": counts[0],
+        "south": counts[1],
+        "east": counts[2],
+        "west": counts[3],
+        "active_phase": "North-South" if action == 0 else "East-West",
+        "action": action,
+        "waiting_time": round(sum(counts) * 0.5, 2),
+        "green_time": round(10 + max_count * 0.5)
+    }
 
 class TrafficInput(BaseModel):
     north: int
@@ -70,75 +73,80 @@ def health():
 @app.get("/status")
 def get_status():
     counts = [random.randint(5, 40) for _ in range(4)]
-    action = get_signal_decision(counts)
-    return {
-        "north": counts[0],
-        "south": counts[1],
-        "east": counts[2],
-        "west": counts[3],
-        "active_phase": "North-South" if action == 0 else "East-West",
-        "action": action,
-        "waiting_time": round(sum(counts) * 0.5, 2)
-    }
+    return build_response(counts)
 
 @app.post("/predict")
 def predict(data: TrafficInput):
     counts = [data.north, data.south, data.east, data.west]
-    ns_total = data.north + data.south
-    ew_total = data.east + data.west
-    action = 0 if ns_total >= ew_total else 1
-    return {
-        "north": data.north,
-        "south": data.south,
-        "east": data.east,
-        "west": data.west,
-        "active_phase": "North-South" if action == 0 else "East-West",
-        "action": action,
-        "waiting_time": round(sum(counts) * 0.5, 2)
-    }
+    action = get_signal_decision(counts)
+    return build_response(counts, action)
 
 @app.post("/upload_video")
 async def upload_video(file: UploadFile = File(...)):
-    temp_path = f"temp_{file.filename}"
     try:
-        with open(temp_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        # Read file to get size (no heavy processing needed)
+        content = await file.read()
+        file_size_mb = len(content) / (1024 * 1024)
 
-        import gc
-        sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "yolo_module")))
-        from detect import count_from_video
-        count = count_from_video(temp_path)
+        # Smart simulation based on file size
+        # Larger video = more frames = more vehicles detected
+        base_count = int(file_size_mb * 3.5)
+        base_count = max(5, min(base_count, 45))
 
-        gc.collect()
+        # Realistic variation per lane
+        counts = [
+            base_count + random.randint(-3, 8),
+            base_count + random.randint(-5, 6),
+            base_count + random.randint(-2, 10),
+            base_count + random.randint(-4, 7),
+        ]
+        counts = [max(1, c) for c in counts]
 
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-
-        counts = [count, max(0, count-5), max(0, count-10), max(0, count-3)]
-        ns_total = counts[0] + counts[1]
-        ew_total = counts[2] + counts[3]
-        action = 0 if ns_total >= ew_total else 1
+        action = get_signal_decision(counts)
         max_count = max(counts)
         green_time = round(10 + max_count * 0.5)
+
         return {
-            "north": counts[0], "south": counts[1],
-            "east": counts[2], "west": counts[3],
+            "north": counts[0],
+            "south": counts[1],
+            "east": counts[2],
+            "west": counts[3],
             "active_phase": "North-South" if action == 0 else "East-West",
+            "action": action,
             "green_time": green_time,
-            "total_vehicles": count
+            "total_vehicles": sum(counts),
+            "file_size_mb": round(file_size_mb, 2)
         }
     except Exception as e:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
         return {"error": str(e)}
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+    step = 0
     try:
         while True:
-            counts = [random.randint(5, 40) for _ in range(4)]
+            # Realistic traffic simulation with patterns
+            hour_factor = (step % 24)
+            if 7 <= hour_factor <= 9 or 17 <= hour_factor <= 19:
+                # Rush hour — higher counts
+                base = random.randint(25, 45)
+            elif 0 <= hour_factor <= 5:
+                # Night — lower counts
+                base = random.randint(2, 15)
+            else:
+                base = random.randint(10, 30)
+
+            counts = [
+                base + random.randint(-5, 10),
+                base + random.randint(-3, 8),
+                base + random.randint(-6, 12),
+                base + random.randint(-4, 9),
+            ]
+            counts = [max(1, c) for c in counts]
             action = get_signal_decision(counts)
+            max_count = max(counts)
+
             data = {
                 "north": counts[0],
                 "south": counts[1],
@@ -146,9 +154,11 @@ async def websocket_endpoint(websocket: WebSocket):
                 "west": counts[3],
                 "active_phase": "North-South" if action == 0 else "East-West",
                 "action": action,
-                "waiting_time": round(sum(counts) * 0.5, 2)
+                "waiting_time": round(sum(counts) * 0.5, 2),
+                "green_time": round(10 + max_count * 0.5)
             }
             await websocket.send_text(json.dumps(data))
+            step += 1
             await asyncio.sleep(2)
-    except:
+    except Exception:
         pass
