@@ -110,7 +110,6 @@ pip install fastapi uvicorn python-multipart numpy pydantic
 pip install stable-baselines3 gymnasium
 pip install ultralytics opencv-python
 ```
-
 **3. Train the RL agent** (optional — pre-trained model already included)
 ```bash
 cd rl_agent
