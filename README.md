@@ -2,9 +2,7 @@
 
 An AI-powered traffic signal optimization system that dynamically controls a 4-way intersection using Reinforcement Learning. Instead of fixed timers, the system observes real-time vehicle density per lane and decides which direction gets the green light — reducing average waiting time compared to traditional fixed-cycle signals.
 
-**🔗 Live Demo:** [smart-traffic-signal-ai.vercel.app](https://smart-traffic-signal-ai.vercel.app)
-**🔗 API:** [smart-traffic-signal-ai.onrender.com](https://smart-traffic-signal-ai.onrender.com)
-**🔗 API Docs:** [smart-traffic-signal-ai.onrender.com/docs](https://smart-traffic-signal-ai.onrender.com/docs)
+
 
 > ⚠️ Backend hosted on Render free tier — first load may take 30-50 seconds to wake up. All subsequent requests are instant.
 
